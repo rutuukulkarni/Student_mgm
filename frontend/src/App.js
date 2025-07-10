@@ -18,7 +18,7 @@ function App() {
           <Route path="/students/add" element={<StudentForm />} />
           <Route path="/students/edit/:id" element={<StudentForm />} />
           <Route path="/students/:id" element={<StudentDetails />} />
-          <Route path="/students/:id/marks/add" element={<MarkForm />} />
+          <Route path="/students/:studentId/marks/add" element={<MarkForm />} />
           <Route path="/students/:studentId/marks/:markId/edit" element={<MarkForm />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

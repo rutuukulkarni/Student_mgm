@@ -1,0 +1,170 @@
+diff --git a/backend/server.js b/backend/server.js
+index f41a3ee..76ff137 100644
+--- a/backend/server.js
++++ b/backend/server.js
+@@ -10,6 +10,13 @@ const port = process.env.PORT || 5000;
+ app.use(cors());
+ app.use(express.json());
+ 
++// Log all requests
++app.use((req, res, next) => {
++  console.log(`${req.method} ${req.url}`);
++  console.log('Request Body:', req.body);
++  next();
++});
++
+ // Routes for students
+ app.get('/api/students', async (req, res) => {
+   try {
+@@ -185,6 +192,90 @@ app.get('/api/subjects/:id', async (req, res) => {
+   }
+ });
+ 
++app.post('/api/subjects', async (req, res) => {
++  try {
++    const { subject_name, subject_code } = req.body;
++    
++    if (!subject_name || !subject_code) {
++      return res.status(400).json({ message: 'Subject name and code are required' });
++    }
++    
++    const subject = await Subject.create({
++      subject_name,
++      subject_code
++    });
++    
++    res.status(201).json(subject);
++  } catch (error) {
++    console.error('Error creating subject:', error);
++    
++    if (error.name === 'SequelizeUniqueConstraintError') {
++      return res.status(400).json({ message: 'Subject code already exists' });
++    }
++    
++    res.status(500).json({ message: 'Server error', error: error.message });
++  }
++});
++
++app.put('/api/subjects/:id', async (req, res) => {
++  try {
++    const { id } = req.params;
++    const { subject_name, subject_code } = req.body;
++    
++    if (!subject_name || !subject_code) {
++      return res.status(400).json({ message: 'Subject name and code are required' });
++    }
++    
++    const subject = await Subject.findByPk(id);
++    
++    if (!subject) {
++      return res.status(404).json({ message: 'Subject not found' });
++    }
++    
++    await subject.update({
++      subject_name,
++      subject_code
++    });
++    
++    res.json(subject);
++  } catch (error) {
++    console.error('Error updating subject:', error);
++    
++    if (error.name === 'SequelizeUniqueConstraintError') {
++      return res.status(400).json({ message: 'Subject code already exists' });
++    }
++    
++    res.status(500).json({ message: 'Server error', error: error.message });
++  }
++});
++
++app.delete('/api/subjects/:id', async (req, res) => {
++  try {
++    const { id } = req.params;
++    
++    // Check if subject is being used in marks
++    const markCount = await Mark.count({ where: { subject_id: id } });
++    if (markCount > 0) {
++      return res.status(400).json({ 
++        message: 'Cannot delete subject as it is being used in student marks' 
++      });
++    }
++    
++    const subject = await Subject.findByPk(id);
++    
++    if (!subject) {
++      return res.status(404).json({ message: 'Subject not found' });
++    }
++    
++    await subject.destroy();
++    
++    res.json({ message: 'Subject deleted successfully', subject });
++  } catch (error) {
++    console.error('Error deleting subject:', error);
++    res.status(500).json({ message: 'Server error', error: error.message });
++  }
++});
++
+ // Routes for marks
+ app.get('/api/marks', async (req, res) => {
+   try {
+@@ -270,6 +361,34 @@ app.get('/api/marks/student/:studentId', async (req, res) => {
+   }
+ });
+ 
++// Get a single mark by ID
++app.get('/api/marks/:id', async (req, res) => {
++  try {
++    const { id } = req.params;
++    
++    const mark = await Mark.findByPk(id, {
++      include: [Subject, Student]
++    });
++    
++    if (!mark) {
++      return res.status(404).json({ message: 'Mark not found' });
++    }
++    
++    res.json({
++      id: mark.id,
++      score: mark.score,
++      exam_date: mark.exam_date,
++      student_id: mark.Student.id,
++      subject_id: mark.Subject.id,
++      subject_name: mark.Subject.subject_name,
++      subject_code: mark.Subject.subject_code
++    });
++  } catch (error) {
++    console.error('Error fetching mark:', error);
++    res.status(500).json({ message: 'Server error', error: error.message });
++  }
++});
++
+ app.post('/api/marks', async (req, res) => {
+   try {
+     const { student_id, subject_id, score, exam_date } = req.body;
+diff --git a/frontend/src/App.js b/frontend/src/App.js
+index da7c26f..44221f5 100644
+--- a/frontend/src/App.js
++++ b/frontend/src/App.js
+@@ -18,7 +18,7 @@ function App() {
+           <Route path="/students/add" element={<StudentForm />} />
+           <Route path="/students/edit/:id" element={<StudentForm />} />
+           <Route path="/students/:id" element={<StudentDetails />} />
+-          <Route path="/students/:id/marks/add" element={<MarkForm />} />
++          <Route path="/students/:studentId/marks/add" element={<MarkForm />} />
+           <Route path="/students/:studentId/marks/:markId/edit" element={<MarkForm />} />
+           <Route path="*" element={<NotFound />} />
+         </Routes>
+diff --git a/frontend/src/components/MarkForm.js b/frontend/src/components/MarkForm.js
+index efd04f9..86a95b0 100644
+--- a/frontend/src/components/MarkForm.js
++++ b/frontend/src/components/MarkForm.js
+@@ -5,7 +5,7 @@ import Swal from 'sweetalert2';
+ import api from '../services/api';
+ 
+ const MarkForm = () => {
+-  const { id: studentId, markId } = useParams();
++  const { studentId, markId } = useParams();
+   const navigate = useNavigate();
+   const isEditMode = !!markId;
+ 

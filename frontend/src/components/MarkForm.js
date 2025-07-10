@@ -5,7 +5,7 @@ import Swal from 'sweetalert2';
 import api from '../services/api';
 
 const MarkForm = () => {
-  const { id: studentId, markId } = useParams();
+  const { studentId, markId } = useParams();
   const navigate = useNavigate();
   const isEditMode = !!markId;
 

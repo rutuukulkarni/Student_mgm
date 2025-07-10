@@ -10,6 +10,13 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Log all requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  console.log('Request Body:', req.body);
+  next();
+});
+
 // Routes for students
 app.get('/api/students', async (req, res) => {
   try {
@@ -185,6 +192,90 @@ app.get('/api/subjects/:id', async (req, res) => {
   }
 });
 
+app.post('/api/subjects', async (req, res) => {
+  try {
+    const { subject_name, subject_code } = req.body;
+    
+    if (!subject_name || !subject_code) {
+      return res.status(400).json({ message: 'Subject name and code are required' });
+    }
+    
+    const subject = await Subject.create({
+      subject_name,
+      subject_code
+    });
+    
+    res.status(201).json(subject);
+  } catch (error) {
+    console.error('Error creating subject:', error);
+    
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({ message: 'Subject code already exists' });
+    }
+    
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+app.put('/api/subjects/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { subject_name, subject_code } = req.body;
+    
+    if (!subject_name || !subject_code) {
+      return res.status(400).json({ message: 'Subject name and code are required' });
+    }
+    
+    const subject = await Subject.findByPk(id);
+    
+    if (!subject) {
+      return res.status(404).json({ message: 'Subject not found' });
+    }
+    
+    await subject.update({
+      subject_name,
+      subject_code
+    });
+    
+    res.json(subject);
+  } catch (error) {
+    console.error('Error updating subject:', error);
+    
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({ message: 'Subject code already exists' });
+    }
+    
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+app.delete('/api/subjects/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if subject is being used in marks
+    const markCount = await Mark.count({ where: { subject_id: id } });
+    if (markCount > 0) {
+      return res.status(400).json({ 
+        message: 'Cannot delete subject as it is being used in student marks' 
+      });
+    }
+    
+    const subject = await Subject.findByPk(id);
+    
+    if (!subject) {
+      return res.status(404).json({ message: 'Subject not found' });
+    }
+    
+    await subject.destroy();
+    
+    res.json({ message: 'Subject deleted successfully', subject });
+  } catch (error) {
+    console.error('Error deleting subject:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Routes for marks
 app.get('/api/marks', async (req, res) => {
   try {
@@ -266,6 +357,34 @@ app.get('/api/marks/student/:studentId', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching student marks:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get a single mark by ID
+app.get('/api/marks/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const mark = await Mark.findByPk(id, {
+      include: [Subject, Student]
+    });
+    
+    if (!mark) {
+      return res.status(404).json({ message: 'Mark not found' });
+    }
+    
+    res.json({
+      id: mark.id,
+      score: mark.score,
+      exam_date: mark.exam_date,
+      student_id: mark.Student.id,
+      subject_id: mark.Subject.id,
+      subject_name: mark.Subject.subject_name,
+      subject_code: mark.Subject.subject_code
+    });
+  } catch (error) {
+    console.error('Error fetching mark:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
